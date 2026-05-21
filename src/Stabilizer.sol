@@ -138,7 +138,6 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     function addLiquidity(uint256 amountUsdc, uint256 amountUsdt, uint256 minAmountStb, address receiver)
         external
         whenNotPaused
-        nonReentrant
     {
         require(amountUsdc > 0 || amountUsdt > 0, "Invalid amount");
         require(receiver != address(0), "Zero address");
@@ -172,7 +171,6 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     function removeLiquidity(uint256 amountStb, uint256 minAmountUsdc, uint256 minAmountUsdt, address receiver)
         external
         whenNotPaused
-        nonReentrant
     {
         require(amountStb > 0, "Invalid Stb amount");
 
@@ -187,7 +185,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         usdcReserves -= amountUsdc;
         usdtReserves -= amountUsdt;
 
-        _burn(receiver, amountStb);
+        _burn(msg.sender, amountStb);
 
         IERC20(usdc).safeTransfer(receiver, amountUsdc);
         IERC20(usdt).safeTransfer(receiver, amountUsdt);
@@ -195,11 +193,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         emit LiquidityRemoved(amountUsdc, amountUsdt, amountStb, receiver);
     }
 
-    function exchange(address token, uint256 amount, uint256 minAmountOut, address receiver)
-        external
-        ensureSwapStatus
-        nonReentrant
-    {
+    function exchange(address token, uint256 amount, uint256 minAmountOut, address receiver) external ensureSwapStatus {
         require(token == usdc || token == usdt, "Invalid token");
         require(oracle != address(0), "Oracle not set");
         require(amount > 0, "Invalid amount");
@@ -219,12 +213,12 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     {
         if (token == usdc) {
             usdcReserves += amount;
-            usdtReserves -= quoteAmount;
+            usdtReserves -= (quoteAmount + fee);
             IERC20(usdc).safeTransferFrom(msg.sender, address(this), amount);
             IERC20(usdt).safeTransfer(receiver, quoteAmount);
             IERC20(usdt).safeTransfer(feeReceiver, fee);
         } else {
-            usdcReserves -= quoteAmount;
+            usdcReserves -= (quoteAmount + fee);
             usdtReserves += amount;
             IERC20(usdt).safeTransferFrom(msg.sender, address(this), amount);
             IERC20(usdc).safeTransfer(receiver, quoteAmount);

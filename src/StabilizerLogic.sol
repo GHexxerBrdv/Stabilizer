@@ -21,12 +21,11 @@ library StabilizerLogic {
         uint256 minLiquidity
     ) internal pure returns (uint256 stbAmount) {
         uint256 dNew = newUsdcReserve.getD(newUsdtReserve, a);
-        uint256 dOld = oldUsdcReserve.getD(oldUsdtReserve, a);
-
         if (stbSupply == 0) {
             require(dNew > minLiquidity, "Insufficient initial deposit");
             return dNew - minLiquidity;
         }
+        uint256 dOld = oldUsdcReserve.getD(oldUsdtReserve, a);
         require(dNew >= dOld, "Invalid D");
 
         uint256 dDiff = dNew - dOld;
@@ -67,11 +66,11 @@ library StabilizerLogic {
         returns (uint16)
     {
         if (isStabilizing) {
-            uint256 discount = (imbalanceDelta * 3) / 10000;
+            uint256 discount = (imbalanceDelta * 3) / 100;
             discount = discount.min(50);
             return uint16((dynamicFee - discount).max(baseFee));
         } else {
-            uint256 surcharge = (imbalanceDelta * 5) / 10000;
+            uint256 surcharge = (imbalanceDelta * 5) / 100;
             surcharge = surcharge.min(100);
             return uint16((dynamicFee + surcharge).max(baseFee));
         }
