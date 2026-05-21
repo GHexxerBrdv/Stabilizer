@@ -6,7 +6,7 @@ library StabilizerMath {
     uint8 private constant COIN = 2;
     uint8 private constant MAX_ITERATIONS = 255;
 
-    function abs(uint256 a, uint256 b) internal pure returns (uint256) {
+    function abs(uint256 a, uint256 b) public pure returns (uint256) {
         return a > b ? a - b : b - a;
     }
 
