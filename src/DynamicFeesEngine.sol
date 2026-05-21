@@ -22,9 +22,12 @@ pragma solidity ^0.8.33;
 // - Shallow liquidity → Higher fees
 // - Deep liquidity → Lower fees
 
-import {StabilizerMath} from "./StabilizerMath.sol";
+import {StabilizerInvariant} from "./Invariant.sol";
+import {Math} from "./Math.sol";
 
-library DynamicFeesController {
+library DynamicFeesEngine {
+    using Math for uint256;
+
     uint16 private constant MAX_BPS = 10000;
     uint16 private constant IMBALANCE_SCALE = 10000;
 
@@ -46,7 +49,12 @@ library DynamicFeesController {
 
         uint16 imbalanceFeeBps = _calculateImbalanceFeeBps(usdcReserves, usdtReserves);
         uint16 priceDeviationFeeBps = _calculatePriceDeviationFeeBps(usdcPrice, usdtPrice);
-        return uint16(_min((baseFee + imbalanceFeeBps + priceDeviationFeeBps), maxDynamicFee));
+        uint256 fee = uint256(baseFee) + uint256(imbalanceFeeBps) + uint256(priceDeviationFeeBps);
+        return uint16(fee.min(uint256(maxDynamicFee)));
+    }
+
+    function calculateImbalance(uint256 usdcReserves, uint256 usdtReserves) internal pure returns (uint256) {
+        return _calculateImbalance(usdcReserves, usdtReserves);
     }
 
     function _calculateImbalanceFeeBps(uint256 usdcReserves, uint256 usdtReserves) private pure returns (uint16) {
@@ -54,7 +62,7 @@ library DynamicFeesController {
         uint256 linear = imbalanceBps / 10;
         uint256 quadratic = (imbalanceBps * imbalanceBps) / 20000;
         uint256 imbalanceFeeBps = linear + quadratic;
-        return uint16(_min(imbalanceFeeBps, uint256(MAX_IMBALANCE_FEE)));
+        return uint16(imbalanceFeeBps.min(uint256(MAX_IMBALANCE_FEE)));
     }
 
     function _calculatePriceDeviationFeeBps(uint256 usdcPrice, uint256 usdtPrice) private pure returns (uint16) {
@@ -63,11 +71,11 @@ library DynamicFeesController {
         }
         uint256 deviationBps = _calculateDeviation(usdcPrice, usdtPrice);
         uint256 deviationFeeBps = (deviationBps * deviationBps * 2) / MAX_BPS;
-        return uint16(_min(deviationFeeBps, uint256(MAX_PRICE_DEVIATION_FEE)));
+        return uint16(deviationFeeBps.min(uint256(MAX_PRICE_DEVIATION_FEE)));
     }
 
     function _calculateImbalance(uint256 usdcReserves, uint256 usdtReserves) private pure returns (uint256) {
-        uint256 difference = StabilizerMath.abs(usdcReserves, usdtReserves);
+        uint256 difference = usdcReserves.absDiff(usdtReserves);
         uint256 total = usdcReserves + usdtReserves;
 
         if (total == 0) {
@@ -75,26 +83,18 @@ library DynamicFeesController {
         }
 
         uint256 imbalance = (difference * MAX_BPS) / total;
-        return _min(imbalance, uint256(IMBALANCE_SCALE));
+        return imbalance.min(uint256(IMBALANCE_SCALE));
     }
 
     function _calculateDeviation(uint256 usdcPrice, uint256 usdtPrice) private pure returns (uint256) {
-        uint256 priceDifference = StabilizerMath.abs(usdcPrice, usdtPrice);
-        uint256 maxPrice = _max(usdcPrice, usdtPrice);
+        uint256 priceDifference = usdcPrice.absDiff(usdtPrice);
+        uint256 maxPrice = usdcPrice.max(usdtPrice);
 
         if (maxPrice == 0) {
             return 0;
         }
 
         uint256 deviation = (priceDifference * IMBALANCE_SCALE) / maxPrice;
-        return _min(deviation, uint256(IMBALANCE_SCALE));
-    }
-
-    function _max(uint256 a, uint256 b) private pure returns (uint256) {
-        return a > b ? a : b;
-    }
-
-    function _min(uint256 a, uint256 b) private pure returns (uint256) {
-        return a < b ? a : b;
+        return deviation.min(uint256(IMBALANCE_SCALE));
     }
 }

@@ -6,12 +6,18 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {StabilizerMath} from "./StabilizerMath.sol";
+import {StabilizerInvariant} from "./Invariant.sol";
 import {StabilizerOracle} from "./StabilizerOracle.sol";
-import {DynamicFeesController} from "./DynamicFeesController.sol";
+import {DynamicFeesEngine} from "./DynamicFeesEngine.sol";
+import {StabilizerLogic} from "./StabilizerLogic.sol";
+import {Math} from "./Math.sol";
 
 contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using StabilizerInvariant for uint256;
+    using DynamicFeesEngine for uint256;
+    using StabilizerLogic for uint256;
+    using Math for uint256;
 
     address private oracle;
 
@@ -28,6 +34,8 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
 
     uint256 private amp;
 
+    uint256 private constant MIN_LIQUIDITY = 1000;
+
     modifier whenNotPaused() {
         require(!stabilizerPaused, "Pool is paused");
         _;
@@ -35,6 +43,11 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
 
     modifier ensureSwapStatus() {
         require(!swapPaused, "Swap is paused");
+        _;
+    }
+
+    modifier onlyOwnerOrFeeReceiver() {
+        require(msg.sender == owner() || msg.sender == feeReceiver, "Not owner or fee receiver");
         _;
     }
 
@@ -47,6 +60,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     event FeeBpsUpdate(uint16 feeBps, uint16 maxFeeBps);
     event OracleUpdate(address oldOracle, address newOracle);
     event AmpUpdate(uint256 amp);
+    event FeeReceiverUpdate(address oldFeeReceiver, address newFeeReceiver);
 
     constructor(
         address admin,
@@ -55,7 +69,8 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         uint16 _baseFees,
         uint16 _maxFees,
         uint256 _amp,
-        address _oracle
+        address _oracle,
+        address _feeReceiver
     ) Ownable(admin) {
         usdc = _usdc;
         usdt = _usdt;
@@ -63,6 +78,13 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         maxFeeBps = _maxFees;
         amp = _amp;
         oracle = _oracle;
+        feeReceiver = _feeReceiver;
+    }
+
+    function setFeeReceiver(address _feeReceiver) external onlyOwner {
+        require(_feeReceiver != address(0), "Zero address");
+        feeReceiver = _feeReceiver;
+        emit FeeReceiverUpdate(address(0), _feeReceiver);
     }
 
     function updateFeeBps(uint16 _feeBps, uint16 _maxFeeBps) external onlyOwner {
@@ -124,13 +146,20 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
 
         uint256 oldUsdcBalance = usdcReserves;
         uint256 oldUsdtBalance = usdtReserves;
+        uint256 stbSupply = totalSupply();
 
         usdcReserves += amountUsdc;
         usdtReserves += amountUsdt;
 
-        uint256 amountStb = calculateStbMintAmount(oldUsdcBalance, oldUsdtBalance);
+        uint256 amountStb = oldUsdcBalance.calculateStbMintAmount(
+            oldUsdtBalance, usdcReserves, usdtReserves, stbSupply, amp, MIN_LIQUIDITY
+        );
         require(amountStb > 0, "Insufficient STB amount");
         require(amountStb >= minAmountStb, "Insufficient STB amount");
+
+        if (stbSupply == 0) {
+            _mint(address(0), MIN_LIQUIDITY);
+        }
 
         IERC20(usdc).safeTransferFrom(msg.sender, address(this), amountUsdc);
         IERC20(usdt).safeTransferFrom(msg.sender, address(this), amountUsdt);
@@ -149,8 +178,9 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
 
         uint256 oldUsdcBalance = usdcReserves;
         uint256 oldUsdtBalance = usdtReserves;
-
-        (uint256 amountUsdc, uint256 amountUsdt) = calculateWithdrawAmounts(amountStb, oldUsdcBalance, oldUsdtBalance);
+        uint256 stbSupply = totalSupply();
+        (uint256 amountUsdc, uint256 amountUsdt) =
+            amountStb.calculateWithdrawAmounts(oldUsdcBalance, oldUsdtBalance, stbSupply);
 
         require(amountUsdc >= minAmountUsdc && amountUsdt >= minAmountUsdt, "Insufficient token amount");
 
@@ -176,96 +206,37 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         require(receiver != address(0), "Invalid receiver");
         require(usdcReserves > 0 && usdtReserves > 0, "Insufficient reserves");
 
-        (uint256 quoteAmount, uint256 fees) = calculateExchangeAmount(token, amount);
+        (uint256 quoteAmount, uint256 fees) = amount.calculationExchangeAmount(
+            token, usdc, usdt, oracle, usdcReserves, usdtReserves, amp, feeBps, maxFeeBps
+        );
         require(quoteAmount >= minAmountOut, "Insufficient output amount");
         _poolInteraction(token, amount, quoteAmount, fees, receiver);
         emit Exchange(token, amount, quoteAmount, fees, receiver, feeReceiver);
     }
 
-    function _poolInteraction(address token, uint256 amount, uint256 quoteAmount, uint256 fees, address receiver)
+    function _poolInteraction(address token, uint256 amount, uint256 quoteAmount, uint256 fee, address receiver)
         private
     {
         if (token == usdc) {
-            usdcReserves += (amount - fees);
+            usdcReserves += amount;
             usdtReserves -= quoteAmount;
             IERC20(usdc).safeTransferFrom(msg.sender, address(this), amount);
             IERC20(usdt).safeTransfer(receiver, quoteAmount);
+            IERC20(usdt).safeTransfer(feeReceiver, fee);
         } else {
             usdcReserves -= quoteAmount;
-            usdtReserves += (amount - fees);
+            usdtReserves += amount;
             IERC20(usdt).safeTransferFrom(msg.sender, address(this), amount);
             IERC20(usdc).safeTransfer(receiver, quoteAmount);
+            IERC20(usdc).safeTransfer(feeReceiver, fee);
         }
-    }
-
-    function calculateStbMintAmount(uint256 oldUsdcBalance, uint256 oldUsdtBalance) private returns (uint256) {
-        uint256 a = A();
-        uint256 stbSupply = totalSupply();
-        uint256 newUsdcBalance = usdcReserves;
-        uint256 newUsdtBalance = usdtReserves;
-
-        uint256 d = StabilizerMath.getD(newUsdcBalance, newUsdtBalance, a);
-        if (stbSupply == 0) {
-            require(d > 1000, "Insufficient initial deposit");
-            _mint(address(0), 1000);
-            return d - 1000;
-        }
-        uint256 dOld = StabilizerMath.getD(oldUsdcBalance, oldUsdtBalance, a);
-        uint256 dNew = StabilizerMath.getD(newUsdcBalance, newUsdtBalance, a);
-
-        require(dNew >= dOld, "Invalid D");
-
-        uint256 dDiff = dNew - dOld;
-
-        uint256 stbAmount = dDiff * stbSupply / dOld;
-        return stbAmount;
-    }
-
-    function calculateWithdrawAmounts(uint256 amountStb, uint256 usdcBalance, uint256 usdtBalance)
-        private
-        view
-        returns (uint256 usdcAmount, uint256 usdtAmount)
-    {
-        uint256 stbSupply = totalSupply();
-        require(amountStb > 0, "Invalid Stb amount");
-        require(amountStb <= stbSupply, "Invalid Stb amount");
-        require(usdcBalance > 0 && usdtBalance > 0, "Invalid token balances");
-        usdcAmount = amountStb * usdcBalance / stbSupply;
-        require(usdcAmount > 0, "Invalid usdc amount");
-        usdtAmount = amountStb * usdtBalance / stbSupply;
-        require(usdtAmount > 0, "Invalid usdt amount");
-    }
-
-    function calculateExchangeAmount(address token, uint256 amount) private view returns (uint256, uint256) {
-        require(amount > 0, "Invalid amount");
-        uint256 usdcBalance = usdcReserves;
-        uint256 usdtBalance = usdtReserves;
-        uint256 a = A();
-        uint256 d = StabilizerMath.getD(usdcBalance, usdtBalance, a);
-
-        uint16 dynamicFee = _getDynamicFee();
-        uint256 fees = amount * dynamicFee / 10000;
-        uint256 remainingAmount = amount - fees;
-
-        uint256 newTokenAmount = token == usdc ? usdcBalance + remainingAmount : usdtBalance + remainingAmount;
-        uint256 newReserveOut = StabilizerMath.getY(newTokenAmount, d, a);
-        uint256 quoteAmount = token == usdc ? usdtBalance - newReserveOut : usdcBalance - newReserveOut;
-        return (quoteAmount, fees);
     }
 
     function _getDynamicFee() private view returns (uint16) {
         uint256 usdcPrice = StabilizerOracle(oracle).getPrice(usdc);
         uint256 usdtPrice = StabilizerOracle(oracle).getPrice(usdt);
 
-        return
-            DynamicFeesController.calculateDynamicFee(
-                usdcReserves, usdtReserves, usdcPrice, usdtPrice, feeBps, maxFeeBps
-            );
-    }
-
-    modifier onlyOwnerOrFeeReceiver() {
-        require(msg.sender == owner() || msg.sender == feeReceiver, "Not owner or fee receiver");
-        _;
+        return usdcReserves.calculateDynamicFee(usdtReserves, usdcPrice, usdtPrice, feeBps, maxFeeBps);
     }
 
     function stabilize() external onlyOwnerOrFeeReceiver {

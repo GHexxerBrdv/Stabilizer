@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-library StabilizerMath {
+import {Math} from "./Math.sol";
+
+library StabilizerInvariant {
+    using Math for uint256;
+
     uint8 private constant COIN_MULTIPLIER = 4;
     uint8 private constant COIN = 2;
     uint8 private constant MAX_ITERATIONS = 255;
-
-    function abs(uint256 a, uint256 b) public pure returns (uint256) {
-        return a > b ? a - b : b - a;
-    }
 
     function getD(uint256 usdcBalance, uint256 usdtBalance, uint256 amp) internal pure returns (uint256) {
         require(usdcBalance > 0 && usdtBalance > 0, "Zero balance");
@@ -30,7 +30,7 @@ library StabilizerMath {
 
             d = num / den;
 
-            if (abs(d, dPrev) <= 1) {
+            if (d.absDiff(dPrev) <= 1) {
                 return d;
             }
             unchecked {
@@ -54,7 +54,7 @@ library StabilizerMath {
             uint256 num = y * y + c;
             uint256 den = 2 * y + b - d;
             y = num / den;
-            if (abs(y, yPrev) <= 1) {
+            if (y.absDiff(yPrev) <= 1) {
                 return y;
             }
             unchecked {

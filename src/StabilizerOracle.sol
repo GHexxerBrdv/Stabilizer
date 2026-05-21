@@ -33,6 +33,7 @@ contract StabilizerOracle is Ownable {
         require(_token != address(0), "Zero address");
         require(tokenToPriceFeed[_token] != address(0), "No price feed set");
         (, int256 price,,,) = AggregatorV3Interface(tokenToPriceFeed[_token]).latestRoundData();
-        return price > 0 ? uint256(price) : 0;
+        require(price > 0, "Invalid price");
+        return uint256(price);
     }
 }
