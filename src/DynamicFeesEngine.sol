@@ -28,53 +28,51 @@ import {Math} from "./Math.sol";
 library DynamicFeesEngine {
     using Math for uint256;
 
-    uint16 private constant MAX_BPS = 10000;
-    uint16 private constant IMBALANCE_SCALE = 10000;
+    uint8 private constant BASE_FEE_BPS = 4;
 
-    uint16 private constant MAX_IMBALANCE_FEE = 200;
+    uint16 private constant MAX_DYNAMIC_FEE_BPS = 30;
 
-    uint16 private constant MAX_PRICE_DEVIATION_FEE = 300;
+    uint16 private constant SCALE_FACTOR = 10000;
 
-    function calculateDynamicFee(
-        uint256 usdcReserves,
-        uint256 usdtReserves,
-        uint256 usdcPrice,
-        uint256 usdtPrice,
-        uint16 baseFee,
-        uint16 maxDynamicFee
-    ) internal pure returns (uint16) {
-        if (usdcReserves == 0 || usdtReserves == 0) {
-            return baseFee;
-        }
+    uint16 private constant MAX_IMBALANCE_FEE_BPS = 15;
 
-        uint16 imbalanceFeeBps = _calculateImbalanceFeeBps(usdcReserves, usdtReserves);
-        uint16 priceDeviationFeeBps = _calculatePriceDeviationFeeBps(usdcPrice, usdtPrice);
-        uint256 fee = uint256(baseFee) + uint256(imbalanceFeeBps) + uint256(priceDeviationFeeBps);
-        return uint16(fee.min(uint256(maxDynamicFee)));
+    uint16 private constant MAX_PRICE_DEVIATION_FEE_BPS = 15;
+
+    // add imbalance threshold
+    // add price threshol
+
+    function calculateDynamicFee(uint256 usdcReserves, uint256 usdtReserves, uint256 usdcPrice, uint256 usdtPrice)
+        internal
+        pure
+        returns (uint16)
+    {
+        //>/ swap is not possible if one of reserve is empty
+        // if (usdcReserves == 0 || usdtReserves == 0) {
+        //     return baseFee;
+        // }
+
+        uint16 imbalanceFeeBps = calculateImbalanceFeeBps(usdcReserves, usdtReserves);
+        uint16 priceDeviationFeeBps = calculatePriceDeviationFeeBps(usdcPrice, usdtPrice);
+        uint256 fee = uint256(BASE_FEE_BPS) + uint256(imbalanceFeeBps) + uint256(priceDeviationFeeBps);
+        return uint16(fee.min(uint256(MAX_DYNAMIC_FEE_BPS)));
     }
 
-    function calculateImbalance(uint256 usdcReserves, uint256 usdtReserves) internal pure returns (uint256) {
-        return _calculateImbalance(usdcReserves, usdtReserves);
+    function calculateImbalanceFeeBps(uint256 usdcReserves, uint256 usdtReserves) internal pure returns (uint16) {
+        uint256 imbalanceBps = calculateImbalance(usdcReserves, usdtReserves);
+        uint256 imbalanceFeeBps = (imbalanceBps * imbalanceBps) / 2500000;
+        return uint16(imbalanceFeeBps.min(uint256(MAX_IMBALANCE_FEE_BPS)));
     }
 
-    function _calculateImbalanceFeeBps(uint256 usdcReserves, uint256 usdtReserves) private pure returns (uint16) {
-        uint256 imbalanceBps = _calculateImbalance(usdcReserves, usdtReserves);
-        uint256 linear = imbalanceBps / 10;
-        uint256 quadratic = (imbalanceBps * imbalanceBps) / 20000;
-        uint256 imbalanceFeeBps = linear + quadratic;
-        return uint16(imbalanceFeeBps.min(uint256(MAX_IMBALANCE_FEE)));
-    }
-
-    function _calculatePriceDeviationFeeBps(uint256 usdcPrice, uint256 usdtPrice) private pure returns (uint16) {
+    function calculatePriceDeviationFeeBps(uint256 usdcPrice, uint256 usdtPrice) internal pure returns (uint16) {
         if (usdcPrice == 0 || usdtPrice == 0) {
             return 0;
         }
-        uint256 deviationBps = _calculateDeviation(usdcPrice, usdtPrice);
-        uint256 deviationFeeBps = (deviationBps * deviationBps * 2) / MAX_BPS;
-        return uint16(deviationFeeBps.min(uint256(MAX_PRICE_DEVIATION_FEE)));
+        uint256 deviationBps = calculateDeviation(usdcPrice, usdtPrice);
+        uint256 deviationFeeBps = (deviationBps * deviationBps * 2) / SCALE_FACTOR;
+        return uint16(deviationFeeBps.min(uint256(MAX_PRICE_DEVIATION_FEE_BPS)));
     }
 
-    function _calculateImbalance(uint256 usdcReserves, uint256 usdtReserves) private pure returns (uint256) {
+    function calculateImbalance(uint256 usdcReserves, uint256 usdtReserves) internal pure returns (uint256) {
         uint256 difference = usdcReserves.absDiff(usdtReserves);
         uint256 total = usdcReserves + usdtReserves;
 
@@ -82,11 +80,11 @@ library DynamicFeesEngine {
             return 0;
         }
 
-        uint256 imbalance = (difference * MAX_BPS) / total;
-        return imbalance.min(uint256(IMBALANCE_SCALE));
+        uint256 imbalance = (difference * SCALE_FACTOR) / total;
+        return imbalance.min(uint256(SCALE_FACTOR)); //>/ here scale factor is user for 100% imbalance?
     }
 
-    function _calculateDeviation(uint256 usdcPrice, uint256 usdtPrice) private pure returns (uint256) {
+    function calculateDeviation(uint256 usdcPrice, uint256 usdtPrice) internal pure returns (uint256) {
         uint256 priceDifference = usdcPrice.absDiff(usdtPrice);
         uint256 maxPrice = usdcPrice.max(usdtPrice);
 
@@ -94,7 +92,7 @@ library DynamicFeesEngine {
             return 0;
         }
 
-        uint256 deviation = (priceDifference * IMBALANCE_SCALE) / maxPrice;
-        return deviation.min(uint256(IMBALANCE_SCALE));
+        uint256 deviation = (priceDifference * SCALE_FACTOR) / maxPrice;
+        return deviation.min(uint256(SCALE_FACTOR));
     }
 }

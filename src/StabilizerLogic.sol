@@ -11,6 +11,8 @@ library StabilizerLogic {
     using StabilizerInvariant for uint256;
     using Math for uint256;
 
+    uint16 private constant IMBALANCE_THRESHOLD = 7500; // 75%
+
     function calculateStbMintAmount(
         uint256 oldUsdcReserve,
         uint256 oldUsdtReserve,
@@ -67,16 +69,16 @@ library StabilizerLogic {
     {
         if (isStabilizing) {
             uint256 discount = (imbalanceDelta * 3) / 100;
-            discount = discount.min(50);
+            discount = discount.min(30); // discount hard cap must be updated
             return uint16((dynamicFee - discount).max(baseFee));
         } else {
-            uint256 surcharge = (imbalanceDelta * 5) / 100;
-            surcharge = surcharge.min(100);
-            return uint16((dynamicFee + surcharge).max(baseFee));
+            uint256 surcharge = (imbalanceDelta * 2) / 100;
+            surcharge = surcharge.min(40); // surcharge hard cap must be updated
+            return uint16((dynamicFee + surcharge).max(baseFee)); //>/ @audit there is not max fee cap. it just blasts off
         }
     }
 
-    function calculationExchangeAmount(
+    function calculateExchangeAmount(
         uint256 amount,
         address token,
         address usdc,
@@ -84,11 +86,11 @@ library StabilizerLogic {
         address oracle,
         uint256 usdcReserveCurrent,
         uint256 usdtReserveCurrent,
-        uint256 amp,
-        uint16 baseFeeBps,
-        uint16 maxFeeBps
+        uint256 amp
     ) internal view returns (uint256, uint256) {
         require(amount > 0, "Invalid amount");
+
+        // require(_canExecuteSwap())
 
         uint256 usdcPrice = StabilizerOracle(oracle).getPrice(usdc);
         uint256 usdtPrice = StabilizerOracle(oracle).getPrice(usdt);
@@ -112,12 +114,11 @@ library StabilizerLogic {
                 isStabilizing(usdcReserveCurrent, usdtReserveCurrent, usdcReserveNew, usdtReserveNew);
         }
 
-        uint16 dynamicFee =
-            usdcReserveCurrent.calculateDynamicFee(usdtReserveCurrent, usdcPrice, usdtPrice, baseFeeBps, maxFeeBps);
+        uint16 dynamicFee = usdcReserveCurrent.calculateDynamicFee(usdtReserveCurrent, usdcPrice, usdtPrice);
 
-        uint16 payableFee = applyDirectionalAdjustment(imbalanceDelta, dynamicFee, baseFeeBps, stabilizing);
+        // uint16 payableFee = applyDirectionalAdjustment(imbalanceDelta, dynamicFee, baseFeeBps, stabilizing);
 
-        uint256 fee = quoteAmount * payableFee / 10000;
+        uint256 fee = quoteAmount * dynamicFee / 10000;
         uint256 outAmount = quoteAmount - fee;
         return (outAmount, fee);
     }

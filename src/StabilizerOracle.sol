@@ -5,6 +5,8 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract StabilizerOracle is Ownable {
+    uint256 public constant HEARTBEAT = 24 hours;
+
     mapping(address => address) private tokenToPriceFeed;
 
     event PriceFeedSet(address indexed token, address indexed priceFeed);
@@ -31,9 +33,12 @@ contract StabilizerOracle is Ownable {
 
     function getPrice(address _token) external view returns (uint256) {
         require(_token != address(0), "Zero address");
-        require(tokenToPriceFeed[_token] != address(0), "No price feed set");
-        (, int256 price,,,) = AggregatorV3Interface(tokenToPriceFeed[_token]).latestRoundData();
+        address feed = tokenToPriceFeed[_token];
+        require(feed != address(0), "No price feed set");
+        (uint80 roundId, int256 price,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
         require(price > 0, "Invalid price");
+        require(updatedAt > 0, "Invalid updatedAt");
+        require(block.timestamp - updatedAt <= HEARTBEAT, "Price feed stale");
         return uint256(price);
     }
 }
