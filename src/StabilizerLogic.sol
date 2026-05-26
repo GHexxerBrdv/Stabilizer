@@ -11,8 +11,6 @@ library StabilizerLogic {
     using StabilizerInvariant for uint256;
     using Math for uint256;
 
-    uint16 private constant IMBALANCE_THRESHOLD = 7500; // 75%
-
     function calculateStbMintAmount(
         uint256 oldUsdcReserve,
         uint256 oldUsdtReserve,
@@ -49,35 +47,6 @@ library StabilizerLogic {
         require(usdtAmount > 0, "Invalid usdt amount");
     }
 
-    function isStabilizing(uint256 usdcBefore, uint256 usdtBefore, uint256 usdcAfter, uint256 usdtAfter)
-        internal
-        pure
-        returns (bool, uint256)
-    {
-        uint256 imbalanceBefore = usdcBefore.calculateImbalance(usdtBefore);
-        uint256 imbalanceAfter = usdcAfter.calculateImbalance(usdtAfter);
-        (bool isStabilizing, uint256 imbalanceDelta) = (imbalanceAfter < imbalanceBefore)
-            ? (true, imbalanceBefore - imbalanceAfter)
-            : (false, imbalanceAfter - imbalanceBefore);
-        return (isStabilizing, imbalanceDelta);
-    }
-
-    function applyDirectionalAdjustment(uint256 imbalanceDelta, uint16 dynamicFee, uint16 baseFee, bool isStabilizing)
-        internal
-        pure
-        returns (uint16)
-    {
-        if (isStabilizing) {
-            uint256 discount = (imbalanceDelta * 3) / 100;
-            discount = discount.min(30); // discount hard cap must be updated
-            return uint16((dynamicFee - discount).max(baseFee));
-        } else {
-            uint256 surcharge = (imbalanceDelta * 2) / 100;
-            surcharge = surcharge.min(40); // surcharge hard cap must be updated
-            return uint16((dynamicFee + surcharge).max(baseFee)); //>/ @audit there is not max fee cap. it just blasts off
-        }
-    }
-
     function calculateExchangeAmount(
         uint256 amount,
         address token,
@@ -89,8 +58,6 @@ library StabilizerLogic {
         uint256 amp
     ) internal view returns (uint256, uint256) {
         require(amount > 0, "Invalid amount");
-
-        // require(_canExecuteSwap())
 
         uint256 usdcPrice = StabilizerOracle(oracle).getPrice(usdc);
         uint256 usdtPrice = StabilizerOracle(oracle).getPrice(usdt);
@@ -109,14 +76,13 @@ library StabilizerLogic {
                 usdcReserveNew = usdcReserveCurrent - quoteAmount;
                 usdtReserveNew = usdtReserveCurrent + amount;
             }
-
-            (stabilizing, imbalanceDelta) =
-                isStabilizing(usdcReserveCurrent, usdtReserveCurrent, usdcReserveNew, usdtReserveNew);
         }
 
-        uint16 dynamicFee = usdcReserveCurrent.calculateDynamicFee(usdtReserveCurrent, usdcPrice, usdtPrice);
+        DynamicFeesEngine.FeeParams memory params = DynamicFeesEngine.FeeParams(
+            usdcReserveCurrent, usdtReserveCurrent, usdcReserveNew, usdtReserveNew, usdcPrice, usdtPrice
+        );
 
-        // uint16 payableFee = applyDirectionalAdjustment(imbalanceDelta, dynamicFee, baseFeeBps, stabilizing);
+        uint16 dynamicFee = DynamicFeesEngine.calculateFinalFeeBps(params);
 
         uint256 fee = quoteAmount * dynamicFee / 10000;
         uint256 outAmount = quoteAmount - fee;

@@ -216,13 +216,6 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         IERC20(token).safeTransfer(feeReceiver, feeAmount);
     }
 
-    function _getDynamicFee() private view returns (uint16) {
-        uint256 usdcPrice = StabilizerOracle(oracle).getPrice(usdc);
-        uint256 usdtPrice = StabilizerOracle(oracle).getPrice(usdt);
-
-        return usdcReserves.calculateDynamicFee(usdtReserves, usdcPrice, usdtPrice);
-    }
-
     function clean(address token) external onlyOwner {
         require(token != address(0), "Invalid token");
         require(token != usdc && token != usdt, "Invalid token");
@@ -233,27 +226,14 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         emit CleanUp(token, balance);
     }
 
-    function getCurrentDynamicFees() external view returns (uint16) {
-        require(oracle != address(0), "Invalid oracle");
-        return _getDynamicFee();
-    }
-
     function getStabilizerMatrix()
         external
         view
-        returns (
-            uint256 usdcReserveAmount,
-            uint256 usdtReserveAmount,
-            uint16 currentDynamicFee,
-            uint256 usdcPrice,
-            uint256 usdtPrice
-        )
+        returns (uint256 usdcReserveAmount, uint256 usdtReserveAmount, uint256 usdcPrice, uint256 usdtPrice)
     {
-        require(oracle != address(0), "Oracle not set");
         usdcReserveAmount = usdcReserves;
         usdtReserveAmount = usdtReserves;
-        currentDynamicFee = _getDynamicFee();
-        usdcPrice = StabilizerOracle(oracle).getPrice(usdc);
-        usdtPrice = StabilizerOracle(oracle).getPrice(usdt);
+        usdcPrice = oracle == address(0) ? 0 : StabilizerOracle(oracle).getPrice(usdc);
+        usdtPrice = oracle == address(0) ? 0 : StabilizerOracle(oracle).getPrice(usdt);
     }
 }
