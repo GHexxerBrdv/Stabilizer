@@ -28,12 +28,12 @@ library DynamicFeesEngine {
 
         int256 adjustedFee = int256(coreFee) + int256(directionalAdj);
 
-        if (adjustedFee < int256(int16(BASE_FEE_BPS))) {
-            adjustedFee = int256(int16(BASE_FEE_BPS));
+        if (adjustedFee < int256(uint256(BASE_FEE_BPS))) {
+            adjustedFee = int256(uint256(BASE_FEE_BPS));
         }
 
-        if (adjustedFee > int256(int16(MAX_APPLICABLE_FEE_BPS))) {
-            adjustedFee = int256(int16(MAX_APPLICABLE_FEE_BPS));
+        if (adjustedFee > int256(uint256(MAX_APPLICABLE_FEE_BPS))) {
+            adjustedFee = int256(uint256(MAX_APPLICABLE_FEE_BPS));
         }
         finalFeeBps = uint16(uint256(adjustedFee));
     }
@@ -63,7 +63,7 @@ library DynamicFeesEngine {
         if (imbalanceDelta < 2500) {
             return isStabilizing ? int16(-2) : int16(5);
         }
-        return isStabilizing ? int16(-3) : int16(10);
+        return isStabilizing ? int16(-5) : int16(10);
     }
 
     function calculateImbalanceFeeBps(uint256 usdcReserves, uint256 usdtReserves) internal pure returns (uint16) {
