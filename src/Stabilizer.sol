@@ -34,6 +34,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     uint256 private amp;
 
     uint256 private constant MIN_LIQUIDITY = 1000;
+    address private constant LOCKED_LIQUIDITY_HOLDER = address(0xdead);
 
     modifier whenNotPaused() {
         require(!stabilizerPaused, "Pool is paused");
@@ -149,7 +150,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         require(amountStb >= minAmountStb, "Insufficient STB amount");
 
         if (stbSupply == 0) {
-            _mint(address(0), MIN_LIQUIDITY);
+            _mint(LOCKED_LIQUIDITY_HOLDER, MIN_LIQUIDITY);
         }
 
         IERC20(usdc).safeTransferFrom(msg.sender, address(this), amountUsdc);

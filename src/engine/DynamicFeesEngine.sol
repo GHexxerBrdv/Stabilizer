@@ -73,9 +73,7 @@ library DynamicFeesEngine {
     }
 
     function calculatePriceDeviationFeeBps(uint256 usdcPrice, uint256 usdtPrice) internal pure returns (uint16) {
-        if (usdcPrice == 0 || usdtPrice == 0) {
-            return 0;
-        }
+        require(usdcPrice != 0 && usdtPrice != 0, "Zero price");
         uint256 deviationBps = calculateDeviation(usdcPrice, usdtPrice);
         uint256 deviationFeeBps = (deviationBps * deviationBps) / 20000;
         return uint16(deviationFeeBps.min(uint256(MAX_PRICE_DEVIATION_FEE_BPS)));
