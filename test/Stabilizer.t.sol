@@ -188,12 +188,12 @@ contract StabilizerTest is Test {
         (, uint256 expectedFee) = _expectedExchange(address(usdt), amountIn);
         uint256 expectedFeeShare = expectedFee * 3000 / 10_000;
 
-        uint256 feeReceiverUsdtBefore = usdt.balanceOf(feeReceiver);
+        uint256 feeReceiverUsdtBefore = usdc.balanceOf(feeReceiver);
 
         vm.prank(user);
         stabilizer.exchange(address(usdt), amountIn, 1, user);
 
-        assertEq(usdt.balanceOf(feeReceiver), feeReceiverUsdtBefore + expectedFeeShare);
+        assertEq(usdc.balanceOf(feeReceiver), feeReceiverUsdtBefore + expectedFeeShare);
     }
 
     function test_exchange_revertsWhenSwapPaused() public {
@@ -263,7 +263,7 @@ contract StabilizerTest is Test {
         vm.prank(user);
         stabilizer.exchange(address(usdc), amountIn, 1, user);
 
-        assertEq(usdc.balanceOf(newReceiver), expectedFee * 3000 / 10_000);
+        assertEq(usdt.balanceOf(newReceiver), expectedFee * 3000 / 10_000);
     }
 
     function test_admin_clean_sweepsNonPoolToken() public {

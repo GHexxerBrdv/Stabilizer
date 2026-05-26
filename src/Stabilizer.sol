@@ -223,7 +223,7 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
             IERC20(usdt).safeTransferFrom(msg.sender, address(this), amount);
             IERC20(usdc).safeTransfer(receiver, outAmount);
         }
-        _applyFee(fee, token);
+        _applyFee(fee, token == usdc ? usdt : usdc);
     }
 
     function _applyFee(uint256 fee, address token) private {
