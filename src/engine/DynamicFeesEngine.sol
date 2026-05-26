@@ -2,7 +2,8 @@
 pragma solidity ^0.8.33;
 
 import {StabilizerInvariant} from "./Invariant.sol";
-import {Math} from "./Math.sol";
+import {Math} from "../utils/Math.sol";
+import {DataTypes} from "../Types/DataTypes.sol";
 
 library DynamicFeesEngine {
     using Math for uint256;
@@ -13,16 +14,7 @@ library DynamicFeesEngine {
     uint16 private constant MAX_IMBALANCE_FEE_BPS = 15;
     uint16 private constant MAX_PRICE_DEVIATION_FEE_BPS = 3;
 
-    struct FeeParams {
-        uint256 usdcReserveBefore;
-        uint256 usdtReserveBefore;
-        uint256 usdcReserveAfter;
-        uint256 usdtReserveAfter;
-        uint256 usdcPrice;
-        uint256 usdtPrice;
-    }
-
-    function calculateFinalFeeBps(FeeParams memory params) internal pure returns (uint16 finalFeeBps) {
+    function calculateFinalFeeBps(DataTypes.FeeParams memory params) internal pure returns (uint16 finalFeeBps) {
         uint16 imbalanceFee = calculateImbalanceFeeBps(params.usdcReserveBefore, params.usdtReserveBefore);
         uint16 priceDeviationFee = calculatePriceDeviationFeeBps(params.usdcPrice, params.usdtPrice);
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-import {Math} from "./Math.sol";
+import {Math} from "../utils/Math.sol";
 
 library StabilizerInvariant {
     using Math for uint256;

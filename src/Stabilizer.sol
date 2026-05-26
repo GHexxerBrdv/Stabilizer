@@ -6,11 +6,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {StabilizerInvariant} from "./Invariant.sol";
+import {StabilizerInvariant} from "./engine/Invariant.sol";
 import {StabilizerOracle} from "./StabilizerOracle.sol";
-import {DynamicFeesEngine} from "./DynamicFeesEngine.sol";
-import {StabilizerLogic} from "./StabilizerLogic.sol";
-import {Math} from "./Math.sol";
+import {DynamicFeesEngine} from "./engine/DynamicFeesEngine.sol";
+import {StabilizerLogic} from "./engine/StabilizerLogic.sol";
+import {Math} from "./utils/Math.sol";
+import {DataTypes} from "./Types/DataTypes.sol";
 
 contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -132,9 +133,18 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         usdcReserves += amountUsdc;
         usdtReserves += amountUsdt;
 
-        uint256 amountStb = oldUsdcBalance.calculateStbMintAmount(
-            oldUsdtBalance, usdcReserves, usdtReserves, stbSupply, amp, MIN_LIQUIDITY
+        uint256 amountStb = StabilizerLogic.calculateStbMintAmount(
+            DataTypes.StbMintParams({
+                oldUsdcReserve: oldUsdcBalance,
+                oldUsdtReserve: oldUsdtBalance,
+                newUsdcReserve: usdcReserves,
+                newUsdtReserve: usdtReserves,
+                stbSupply: stbSupply,
+                a: amp,
+                minLiquidity: MIN_LIQUIDITY
+            })
         );
+
         require(amountStb > 0, "Insufficient STB amount");
         require(amountStb >= minAmountStb, "Insufficient STB amount");
 
@@ -160,8 +170,12 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         uint256 oldUsdcBalance = usdcReserves;
         uint256 oldUsdtBalance = usdtReserves;
         uint256 stbSupply = totalSupply();
-        (uint256 amountUsdc, uint256 amountUsdt) =
-            amountStb.calculateWithdrawAmounts(oldUsdcBalance, oldUsdtBalance, stbSupply);
+
+        (uint256 amountUsdc, uint256 amountUsdt) = StabilizerLogic.calculateWithdrawAmounts(
+            DataTypes.WithdrawParams({
+                stbAmount: amountStb, usdcReserve: oldUsdcBalance, usdtReserve: oldUsdtBalance, stbSupply: stbSupply
+            })
+        );
 
         require(amountUsdc >= minAmountUsdc && amountUsdt >= minAmountUsdt, "Insufficient token amount");
 
@@ -188,8 +202,9 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         require(usdcReserves > 0 && usdtReserves > 0, "Insufficient reserves");
         require(minAmountOut > 0, "Invalid Amount");
 
-        (uint256 outAmount, uint256 fees) =
-            amount.calculateExchangeAmount(token, usdc, usdt, oracle, usdcReserves, usdtReserves, amp);
+        (uint256 outAmount, uint256 fees) = StabilizerLogic.calculateExchangeAmount(
+            DataTypes.ExchangeParams(amount, token, usdc, usdt, oracle, usdcReserves, usdtReserves, amp)
+        );
         require(outAmount >= minAmountOut, "Insufficient output amount");
         _poolInteraction(token, amount, outAmount, fees, receiver);
         emit Exchange(token, amount, outAmount, fees, receiver, feeReceiver);
