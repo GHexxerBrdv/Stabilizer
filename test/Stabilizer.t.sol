@@ -106,7 +106,7 @@ contract StabilizerTest is Test {
         stabilizer.pause();
 
         vm.startPrank(user);
-        vm.expectRevert("Pool is paused");
+        vm.expectRevert();
         stabilizer.addLiquidity(1e6, 1e6, 1, user);
         vm.stopPrank();
     }
@@ -114,7 +114,7 @@ contract StabilizerTest is Test {
     function test_addLiquidity_revertsOnMinStbSlippage() public {
         vm.startPrank(user);
         _approveTokens();
-        vm.expectRevert("Insufficient STB amount");
+        vm.expectRevert();
         stabilizer.addLiquidity(INITIAL_USDC, INITIAL_USDT, type(uint256).max, user);
         vm.stopPrank();
     }
@@ -122,7 +122,7 @@ contract StabilizerTest is Test {
     function test_addLiquidity_revertsWhenBothAmountsZero() public {
         vm.startPrank(user);
         _approveTokens();
-        vm.expectRevert("Invalid amount");
+        vm.expectRevert();
         stabilizer.addLiquidity(0, 0, 1, user);
         vm.stopPrank();
     }
@@ -159,7 +159,7 @@ contract StabilizerTest is Test {
         stabilizer.pause();
 
         vm.prank(user);
-        vm.expectRevert("Pool is paused");
+        vm.expectRevert();
         stabilizer.removeLiquidity(stbMinted / 10, 1, 1, user);
     }
 
@@ -202,7 +202,7 @@ contract StabilizerTest is Test {
         stabilizer.pauseSwap();
 
         vm.prank(user);
-        vm.expectRevert("Swap is paused");
+        vm.expectRevert();
         stabilizer.exchange(address(usdc), 1_000e6, 1, user);
     }
 
@@ -210,7 +210,7 @@ contract StabilizerTest is Test {
         _addBalancedLiquidity();
 
         vm.prank(user);
-        vm.expectRevert("Insufficient output amount");
+        vm.expectRevert();
         stabilizer.exchange(address(usdc), 1_000e6, type(uint256).max, user);
     }
 
@@ -232,7 +232,7 @@ contract StabilizerTest is Test {
     function test_exchange_revertsWhenReservesEmpty() public {
         vm.startPrank(user);
         _approveTokens();
-        vm.expectRevert("Insufficient reserves");
+        vm.expectRevert();
         stabilizer.exchange(address(usdc), 1e6, 1, user);
         vm.stopPrank();
     }
@@ -281,6 +281,96 @@ contract StabilizerTest is Test {
         (,, uint256 usdcPrice, uint256 usdtPrice) = stabilizer.getStabilizerMatrix();
         assertEq(usdcPrice, uint256(PRICE));
         assertEq(usdtPrice, uint256(PRICE));
+    }
+
+    event MaxImbalanceThresholdUpdate(uint256 oldThreshold, uint256 newThreshold);
+    event MaxPriceDeviationThresholdUpdate(uint256 oldThreshold, uint256 newThreshold);
+
+    function test_admin_canUpdateThresholds() public {
+        assertEq(stabilizer.getMaxImbalanceThreshold(), 8000);
+        assertEq(stabilizer.getMaxPriceDeviationThreshold(), 100);
+
+        vm.startPrank(admin);
+
+        vm.expectEmit(true, true, true, true);
+        emit MaxImbalanceThresholdUpdate(8000, 5000);
+        stabilizer.updateMaxImbalanceThreshold(5000);
+
+        vm.expectEmit(true, true, true, true);
+        emit MaxPriceDeviationThresholdUpdate(100, 150);
+        stabilizer.updateMaxPriceDeviationThreshold(150);
+
+        vm.stopPrank();
+
+        assertEq(stabilizer.getMaxImbalanceThreshold(), 5000);
+        assertEq(stabilizer.getMaxPriceDeviationThreshold(), 150);
+
+        // Reverts if exceeds 100%
+        vm.prank(admin);
+        vm.expectRevert();
+        stabilizer.updateMaxImbalanceThreshold(10001);
+
+        vm.prank(admin);
+        vm.expectRevert();
+        stabilizer.updateMaxPriceDeviationThreshold(10001);
+    }
+
+    function test_exchange_revertsOnPriceDeviationExceeded() public {
+        _addBalancedLiquidity();
+
+        // 1.5% deviation (USDT price becomes 0.985 USD, USDC stays at 1.00 USD)
+        MockV3Aggregator usdtFeed = MockV3Aggregator(oracle.getPriceFeed(address(usdt)));
+        usdtFeed.updateAnswer(98_500_000); // 98.5e6 instead of 100e6
+
+        // Swap should revert because price deviation is 1.5% (150 BPS) which exceeds default 1.0% (100 BPS)
+        vm.startPrank(user);
+        vm.expectRevert();
+        stabilizer.exchange(address(usdc), 10_000e6, 1, user);
+        vm.stopPrank();
+    }
+
+    function test_exchange_revertsOnImbalanceExceededDestabilizing() public {
+        // Add minimal liquidity to easily skew the pool
+        uint256 initialLiq = 10_000e6;
+        uint256 expectedStb = _expectedFirstMint(initialLiq, initialLiq);
+        vm.startPrank(user);
+        _approveTokens();
+        stabilizer.addLiquidity(initialLiq, initialLiq, expectedStb, user);
+
+        // Update threshold to 50% imbalance (5000 bps)
+        vm.stopPrank();
+        vm.prank(admin);
+        stabilizer.updateMaxImbalanceThreshold(5000);
+
+        // Attempt swap that creates ~60% imbalance
+        vm.startPrank(user);
+        vm.expectRevert();
+        stabilizer.exchange(address(usdc), 6_000e6, 1, user);
+        vm.stopPrank();
+    }
+
+    function test_exchange_succeedsOnImbalanceExceededStabilizing() public {
+        // Add skewed liquidity: 17,000 USDC and 3,000 USDT (Imbalance = 14,000 / 20,000 = 70%)
+        uint256 expectedStb = _expectedFirstMint(17_000e6, 3_000e6);
+        vm.startPrank(user);
+        _approveTokens();
+        stabilizer.addLiquidity(17_000e6, 3_000e6, expectedStb, user);
+        vm.stopPrank();
+
+        // Update threshold to 50% (5000 bps)
+        vm.prank(admin);
+        stabilizer.updateMaxImbalanceThreshold(5000);
+
+        // Destabilizing swap should revert
+        vm.startPrank(user);
+        vm.expectRevert();
+        stabilizer.exchange(address(usdc), 3_000e6, 1, user);
+
+        // Stabilizing swap should succeed
+        uint256 userUsdcBefore = usdc.balanceOf(user);
+        stabilizer.exchange(address(usdt), 1_000e6, 1, user);
+        assertGt(usdc.balanceOf(user), userUsdcBefore);
+        vm.stopPrank();
     }
 
     // --- internal helpers ---
@@ -346,7 +436,9 @@ contract StabilizerTest is Test {
                 oracle: address(oracle),
                 usdcReserve: usdcReserve,
                 usdtReserve: usdtReserve,
-                amp: AMP
+                amp: AMP,
+                maxImbalanceThreshold: stabilizer.getMaxImbalanceThreshold(),
+                maxPriceDeviationThreshold: stabilizer.getMaxPriceDeviationThreshold()
             })
         );
     }

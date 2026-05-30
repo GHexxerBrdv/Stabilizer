@@ -37,5 +37,7 @@ library DataTypes {
         uint256 usdcReserve;
         uint256 usdtReserve;
         uint256 amp;
+        uint256 maxImbalanceThreshold;
+        uint256 maxPriceDeviationThreshold;
     }
 }

@@ -8,6 +8,8 @@ import {DataTypes} from "../Types/DataTypes.sol";
 library DynamicFeesEngine {
     using Math for uint256;
 
+    error ZeroPrice();
+
     uint16 private constant BASE_FEE_BPS = 2;
     uint16 private constant MAX_APPLICABLE_FEE_BPS = 25;
     uint16 private constant SCALE_FACTOR = 10000;
@@ -73,7 +75,7 @@ library DynamicFeesEngine {
     }
 
     function calculatePriceDeviationFeeBps(uint256 usdcPrice, uint256 usdtPrice) internal pure returns (uint16) {
-        require(usdcPrice != 0 && usdtPrice != 0, "Zero price");
+        require(usdcPrice != 0 && usdtPrice != 0, ZeroPrice());
         uint256 deviationBps = calculateDeviation(usdcPrice, usdtPrice);
         uint256 deviationFeeBps = (deviationBps * deviationBps) / 20000;
         return uint16(deviationFeeBps.min(uint256(MAX_PRICE_DEVIATION_FEE_BPS)));

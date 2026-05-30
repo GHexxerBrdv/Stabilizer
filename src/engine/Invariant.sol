@@ -6,12 +6,14 @@ import {Math} from "../utils/Math.sol";
 library StabilizerInvariant {
     using Math for uint256;
 
+    error ZeroBalance();
+
     uint8 private constant COIN_MULTIPLIER = 4;
     uint8 private constant COIN = 2;
     uint8 private constant MAX_ITERATIONS = 255;
 
     function getD(uint256 usdcBalance, uint256 usdtBalance, uint256 amp) internal pure returns (uint256) {
-        require(usdcBalance > 0 && usdtBalance > 0, "Zero balance");
+        require(usdcBalance > 0 && usdtBalance > 0, ZeroBalance());
 
         uint256 s = usdcBalance + usdtBalance;
         uint256 ann = COIN_MULTIPLIER * amp;
@@ -40,7 +42,7 @@ library StabilizerInvariant {
     }
 
     function getY(uint256 tokenBalanceOther, uint256 d, uint256 amp) internal pure returns (uint256) {
-        require(tokenBalanceOther > 0, "Zero balance");
+        require(tokenBalanceOther > 0, ZeroBalance());
 
         uint256 ann = COIN_MULTIPLIER * amp;
         uint256 b = tokenBalanceOther + d / ann;
