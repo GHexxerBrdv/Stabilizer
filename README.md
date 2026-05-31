@@ -36,100 +36,6 @@ Standard Constant Product Market Maker (CPMM) AMMs ($x \cdot y = k$) suffer from
 
 ---
 
-## Architecture
-
-Stabilizer's architecture strictly separates the protocol's core state and token management from its mathematical and execution logic. This modular design maximizes testability, simplifies upgrades, and saves significant deployment gas.
-
-### Component Breakdown
-*   **`Stabilizer.sol` (Core Storage & State)**: The user-facing contract. Inherits from OpenZeppelin `ERC20`, `Ownable`, and `ReentrancyGuard`. Manages pool reserves (`usdcReserves`, `usdtReserves`), administrative parameters (`amp`, `maxImbalanceThreshold`, `maxPriceDeviationThreshold`), deposit/withdrawal, and token transfers.
-*   **`StabilizerLogic.sol` (Stateless Execution Engine)**: Orchestrates the calculation flow for minting, withdrawals, and swap quotes. Integrates invariant math, oracle checks, and fee calculation.
-*   **`StabilizerInvariant.sol` (Stableswap Math)**: Implements the Curve Stableswap invariant equations and Newton-Raphson approximation loops for finding the pool invariant $D$ and output reserve balance $y$.
-*   **`DynamicFeesEngine.sol` (Dynamic Pricing)**: Computes the base fee, quadratic imbalances, deviation premiums, and directional adjustments.
-*   **`StabilizerOracle.sol` (Chainlink Pricing Gateway)**: Interfaces with Chainlink aggregators, validating feed freshness and providing safe asset pricing to the engine.
-
-### High-Level Architecture Diagram
-
-```mermaid
-graph TD
-    User([User / Arbitrageur]) <-->|Deposit / Withdraw / Swap| Core[Stabilizer.sol]
-    Admin([Owner / Multisig]) -->|Configure Parameters| Core
-    
-    subgraph Execution Libraries [Stateless Execution Layers]
-        Core <-->|Execute Calculations| Logic[StabilizerLogic]
-        Logic <-->|Stableswap Math| Invariant[StabilizerInvariant]
-        Logic <-->|Dynamic Fees & Directional Adjustment| FeeEngine[DynamicFeesEngine]
-    end
-    
-    subgraph Oracles [Oracle Gateway]
-        Logic <-->|Query Asset Prices| StbOracle[StabilizerOracle]
-        StbOracle <-->|latestRoundData| ChainlinkUSDC[(Chainlink USDC/USD Feed)]
-        StbOracle <-->|latestRoundData| ChainlinkUSDT[(Chainlink USDT/USD Feed)]
-    end
-
-    subgraph Token Ledger [Asset Layer]
-        Core <-->|safeTransferFrom / safeTransfer| USDC[USDC ERC20]
-        Core <-->|safeTransferFrom / safeTransfer| USDT[USDT ERC20]
-        Core -->|30% Swap Fee| FeeReceiver[Fee Receiver / Treasury]
-    end
-    
-    style Core fill:#1f3a52,stroke:#00b4d8,stroke-width:2px,color:#fff
-    style Logic fill:#2d3748,stroke:#a0aec0,stroke-width:1px,color:#fff
-    style Invariant fill:#1a202c,stroke:#e2e8f0,stroke-width:1px,color:#fff
-    style FeeEngine fill:#1a202c,stroke:#e2e8f0,stroke-width:1px,color:#fff
-    style StbOracle fill:#2c5282,stroke:#3182ce,stroke-width:1px,color:#fff
-```
-
-### Request Flow (Swap Exchange Lifecycle)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User / Arbitrageur
-    participant Core as Stabilizer
-    participant Logic as StabilizerLogic
-    participant Oracle as StabilizerOracle
-    participant Fee as DynamicFeesEngine
-    participant Invariant as StabilizerInvariant
-    participant Asset as ERC20 Token Contract
-
-    User->>Core: exchange(tokenIn, amountIn, minAmountOut, receiver)
-    Note over Core: Ensure Swap is Unpaused & Non-Reentrant
-    Core->>Logic: calculateExchangeAmount(ExchangeParams)
-    
-    rect rgb(20, 30, 45)
-        Note over Logic: Verify amountIn > 0
-        Logic->>Oracle: getPrice(USDC) & getPrice(USDT)
-        Oracle-->>Logic: Return validated Prices
-        Logic->>Logic: Check Price Deviation <= Max Price Deviation Threshold
-        
-        Logic->>Invariant: getD(usdcReserve, usdtReserve, amp)
-        Invariant-->>Logic: Return Invariant D (Newton-Raphson)
-        Logic->>Invariant: getY(reserveIn + amountIn, D, amp)
-        Invariant-->>Logic: Return Target Reserve Out (y)
-        
-        Logic->>Logic: Calculate quoteAmount = reserveOutBefore - reserveOutAfter
-        
-        Logic->>Logic: Check Final Imbalance <= Max Imbalance Threshold (unless stabilizing)
-        
-        Logic->>Fee: calculateFinalFeeBps(FeeParams)
-        Fee->>Fee: Base Fee + Quadratic Skew + Quadratic Price Deviation +/- Directional Adjustment
-        Fee-->>Logic: Return finalFeeBps (Clamped 2 to 25 BPS)
-    end
-    
-    Logic-->>Core: Return (outAmount, totalFeeAmount)
-    Core->>Core: Verify outAmount >= minAmountOut
-    
-    Core->>Asset: safeTransferFrom(User, this, amountIn)
-    Core->>Asset: safeTransfer(receiver, outAmount)
-    Core->>Core: Update Internal usdcReserves & usdtReserves Bookkeeping
-    Core->>Asset: safeTransfer(feeReceiver, 30% of totalFeeAmount)
-    Note over Core: Remaining 70% fee stays in contract balance as LP yield backing
-    
-    Core-->>User: Return Swap Confirmation (Emit Exchange Event)
-```
-
----
-
 ## Tech Stack
 
 | Category | Technologies | Description |
@@ -423,59 +329,6 @@ The project achieves:
 
 ---
 
-## CI/CD Pipeline
-
-The project features a fully automated Continuous Integration (CI) pipeline powered by GitHub Actions. Every push or pull request triggers the workflow in `.github/workflows/test.yml`:
-
-```yaml
-name: CI
-...
-jobs:
-  check:
-    name: Foundry project
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6            # Clones repo with recursive submodules
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1 # Sets up Forge and Cast toolchains
-      - name: Run Forge fmt
-        run: forge fmt --check               # Enforces unified code formatting rules
-      - name: Run Forge build
-        run: forge build --sizes             # Verifies contract builds and reports bytecode sizes
-      - name: Run Forge tests
-        run: forge test -vvv                 # Executes entire test suite with verbose logging
-```
-This guarantees that all merged code adheres to standard formatting specifications, compiles successfully without errors, and passes all functional integration tests.
-
----
-
-## Deployment Architecture
-
-The production deployment of Stabilizer is planned using a robust multi-signature governance structure:
-
-```mermaid
-graph TD
-    Deployer[EOA Deployer Account] -->|Deploy Contracts| Core[Stabilizer.sol]
-    Deployer -->|Deploy Oracle Gateway| Oracle[StabilizerOracle.sol]
-    
-    Multisig[(Gnosis Safe Multisig 3-of-5)] -->|transferOwnership| Core
-    Multisig -->|transferOwnership| Oracle
-    
-    Multisig -->|Configures Parameters| Core
-    Multisig -->|Updates Oracle Feeds| Oracle
-    
-    style Multisig fill:#c53030,stroke:#9b2c2c,stroke-width:2px,color:#fff
-    style Deployer fill:#2d3748,stroke:#4a5568,stroke-width:1px,color:#fff
-```
-
-### Deployment Strategy
-1.  **Phase 1 (Setup & Gateways)**: Deployer deploys the `StabilizerOracle` and registers the respective Chainlink Price Feeds (USDC/USD and USDT/USD).
-2.  **Phase 2 (Core Deployment)**: Deployer deploys `Stabilizer`, linking the tokens, amplification coefficient ($A$), oracle gateway, and initial treasury fee receiver.
-3.  **Phase 3 (Ownership Transfer)**: The deployer EOA permanently transfers contract ownership of both the `Stabilizer` and `StabilizerOracle` contracts to a secure Multisig Vault (e.g., Gnosis Safe $3$-of-$5$ signers).
-4.  **Phase 4 (Bootstrap)**: The treasury deposits initial balanced liquidity to mint the locked `MIN_LIQUIDITY` and establish the initial baseline equilibrium invariant.
-
----
-
 ## Challenges and Engineering Decisions
 
 ### 1. Newton-Raphson Approximation in EVM
@@ -495,15 +348,6 @@ graph TD
     *   The remaining 70% of the fee is deducted from the output sent to the swapper but is **not** transferred out of the pool.
     *   Because the internal reserve bookkeeping variables (`usdcReserves` / `usdtReserves`) are decreased by the *entire* quote amount (inclusive of the full fee), but only `outAmount` and `30% * fee` leave the contract, the remaining `70% * fee` accumulates silently in the contract's actual balance.
     *   This structurally backstops the LP tokens. When an LP decides to remove liquidity, their STB shares are burned for a proportional cut of the internal reserve bookkeeping. The accumulated $70\%$ fee surplus sits in the contract as a structural backing buffer, ensuring the actual underlying token balance of the contract always exceeds the bookkept reserves, shielding the protocol from net liquidity drains.
-
----
-
-## Future Improvements
-
-*   **ERC-4626 Tokenized Vault Standard Integration**: Upgrade the `Stabilizer` contract to fully inherit from the ERC-4626 vault interface, allowing seamless yield-bearing integration across the wider DeFi ecosystem.
-*   **Multi-Asset Liquidity Pools ($n > 2$)**: Generalize the Stableswap invariant libraries to support multi-token stablecoin vaults (e.g., combining USDC, USDT, DAI, and LUSD into a single shared pool).
-*   **Dynamic Heartbeat Adjustment**: Implement administrative features in `StabilizerOracle` to dynamically scale the stale price heartbeat threshold based on market volatility, reducing heartbeat limits during high-frequency trading.
-*   **Assembly Math Optimizations (Yul)**: Re-write the core `StabilizerInvariant` iterative loops using Yul assembly to optimize stack operations and further reduce exchange swap gas by $10$-$15\%$.
 
 ---
 
