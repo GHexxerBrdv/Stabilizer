@@ -130,6 +130,7 @@ To deploy to public networks or run fork testing, copy `.env.example` into a `.e
 | `PRIVATE_KEY` | EOA deployer private key used to sign transactions. | Yes (for deployment) |
 | `ETHERSCAN_API_KEY` | Key used to automatically verify source code on block explorers. | No (optional) |
 
+> [!WARNING]
 > **Note:** Never put private key directly in environment variables or commit it to source control either wallet has funds or not.
 ---
 
@@ -163,7 +164,7 @@ forge test --match-contract DynamicFeesEngineTest
 
 ## API Documentation
 
-See [ApiDocs.md](ApiDocs.md) for detailed API documentation.
+See [api](./docs/api.md) for detailed API documentation.
 
 ---
 
@@ -181,68 +182,13 @@ Reserves are only modified internally when users deposit, withdraw, or swap via 
 
 ## Security Features
 
-Stabilizer integrates a comprehensive suite of security controls designed to handle common smart contract vulnerabilities:
-
-### 1. Reentrancy Protection
-All user-facing transactional methods (`addLiquidity`, `removeLiquidity`, `exchange`) utilize the `nonReentrant` modifier from OpenZeppelin's `ReentrancyGuard`. This enforces a mutual exclusion lock, preventing callers from executing recursive call-backs (e.g., standard ERC20 hooks like `transfer` or `fallback` triggers) to drain assets from the contract before the pool's internal reserves are updated.
-
-### 2. Stale Oracle Price Guard (Heartbeat Validation)
-Relying blindly on external price data is extremely dangerous if an oracle stops updating. Stabilizer's pricing gateway enforces three layers of validation on oracle calls:
-```solidity
-(uint80 roundId, int256 price,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
-require(price > 0, InvalidPrice());
-require(updatedAt > 0, StaleFeed());
-require(block.timestamp - updatedAt <= HEARTBEAT, StaleFeed());
-```
-Swaps automatically revert if the oracle price is non-positive or if the feed was updated more than $24$ hours ago (`HEARTBEAT`), protecting LPs from trading against outdated market rates.
-
-### 3. ERC4626-Style Inflation Attack Mitigation
-In typical share-based liquidity vaults, the first depositor can deposit a tiny amount ($1$ wei) and mint $1$ LP share. They can then transfer a large amount of tokens directly to the contract. The pool's exchange rate becomes heavily skewed ($1$ share representing millions of tokens). Subsequent depositors will have their deposits rounded down to $0$ shares, effectively donating their assets to the first depositor.
-
-Stabilizer eliminates this attack vector by introducing a permanent liquidity lock during the pool's very first deposit:
-```solidity
-if (stbSupply == 0) {
-    _mint(LOCKED_LIQUIDITY_HOLDER, MIN_LIQUIDITY); // Mints 1,000 LP tokens to address(0xdead)
-}
-```
-This forces the minimum pool supply to always be at least $1,000$ units, making it economically unfeasible for an attacker to artificially inflate the share price to a point where subsequent deposits suffer from rounding loss.
-
-### 4. Configurable Safety Threshold Circuit Breakers
-To prevent extreme systemic failures, the protocol implements hard circuit breakers:
-*   **Imbalance Limit**: If reserve skewness exceeds the `maxImbalanceThreshold` (e.g., the pool is $90\%$ USDC and $10\%$ USDT), any further swap that *increases* the skew (i.e. selling USDT to buy USDC) is reverted. Only stabilizing swaps that *restore* balance are allowed.
-*   **Price Deviation Limit**: If the oracle price ratio between USDC and USDT deviates past the `maxPriceDeviationThreshold` (e.g., due to an active depeg event of one stablecoin), all swaps are temporarily blocked, halting the pool from acting as a "dumping ground" for the depegged asset.
+See [security](./docs/security.md) for detailed API documentation.
 
 ---
 
 ## Performance Considerations
 
-Solidity is an execution-constrained environment where every calculation incurs gas costs. Several gas optimization design patterns are implemented:
-
-### 1. Stateless Library Executions
-Libraries (`StabilizerLogic`, `DynamicFeesEngine`, `StabilizerInvariant`) utilize Solidity's `internal` functions. When internal functions are called, the code is compiled directly into the parent contract. This avoids expensive external contract calls (`DELEGATECALL` / `CALL`) which cost substantial base gas ($100$ to $700$ gas per call), minimizing the active swap gas footprint.
-
-### 2. High-Efficiency Newton-Raphson Solver
-The iterative Newton-Raphson approximation is heavily optimized:
-*   Loops are capped at a hard maximum of $255$ iterations to guarantee termination and prevent infinite loops that could run out of transaction gas.
-*   The convergence condition is checked using a minimal delta check (`absDiff(dPrev) <= 1`). Once the precision converges to $1$ wei, the loop terminates immediately, saving thousands of gas units compared to fixed-iteration solvers.
-
-### 3. In-Memory Struct Parameter Passing
-Using separate variables inside functions wastes stack slots, frequently triggering Solidity's dreaded "Stack Too Deep" errors. Stabilizer solves this by packing parameters into in-memory structs defined in `DataTypes.sol`:
-```solidity
-struct ExchangeParams {
-    uint256 amount;
-    address token;
-    address usdc;
-    address usdt;
-    address oracle;
-    uint256 usdcReserve;
-    uint256 usdtReserve;
-    uint256 amp;
-    uint256 maxImbalanceThreshold;
-    uint256 maxPriceDeviationThreshold;
-}
-```
-Passing these parameters as a single memory pointer significantly reduces compiler stack pressure and optimizes code execution speed.
+See [performance](./docs/performance.md) for detailed API documentation.
 
 ---
 
@@ -312,4 +258,3 @@ Every storage variable is strategically positioned for tight packing, and core m
 *   **Designed and implemented an innovative Dynamic Fees Engine** featuring quadratic pricing premiums and directional fee rebates (up to 5 BPS discount), successfully aligning arbitrage incentives to maintain pool equilibrium.
 *   **Engineered multi-layered proactive security frameworks**, including an ERC-4626 inflation attack shield, stale price oracle guards, and dual circuit breakers (hard skew and price deviation limits) to shield LP capital from toxic market events.
 *   **Developed a comprehensive test coverage suite** (86 test cases) in Foundry, achieving extensive testing across extreme skew conditions, boundary values, oracle depegs, and mathematical convergence precision.
-*   **Integrated automated CI/CD pipelines** using GitHub Actions, ensuring that every codebase modification passes strict linting check compilation audits, and functional integration tests.
