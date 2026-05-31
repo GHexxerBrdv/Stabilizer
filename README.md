@@ -164,7 +164,7 @@ forge test --match-contract DynamicFeesEngineTest
 
 ## API Documentation
 
-See [api](./docs/api.md) for detailed API documentation.
+See [api](./documentation/api.md) for detailed API documentation.
 
 ---
 
@@ -182,13 +182,13 @@ Reserves are only modified internally when users deposit, withdraw, or swap via 
 
 ## Security Features
 
-See [security](./docs/security.md) for detailed API documentation.
+See [security](./documentation/security.md) for detailed API documentation.
 
 ---
 
 ## Performance Considerations
 
-See [performance](./docs/performance.md) for detailed API documentation.
+See [performance](./documentation/performance.md) for detailed API documentation.
 
 ---
 
