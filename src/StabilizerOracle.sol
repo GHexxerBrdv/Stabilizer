@@ -3,8 +3,9 @@ pragma solidity ^0.8.33;
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IStabilizerOracle} from "./interfaces/IStabilizerOracle.sol";
 
-contract StabilizerOracle is Ownable {
+contract StabilizerOracle is Ownable, IStabilizerOracle {
     uint256 public constant HEARTBEAT = 24 hours;
 
     error InvalidLength();
@@ -14,8 +15,6 @@ contract StabilizerOracle is Ownable {
     error StaleFeed();
 
     mapping(address => address) private tokenToPriceFeed;
-
-    event PriceFeedSet(address indexed token, address indexed priceFeed);
 
     constructor(address[] memory _priceFeeds, address[] memory _tokens) Ownable(msg.sender) {
         _setPriceFeed(_priceFeeds, _tokens);

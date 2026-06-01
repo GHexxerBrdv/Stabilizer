@@ -12,8 +12,9 @@ import {DynamicFeesEngine} from "./engine/DynamicFeesEngine.sol";
 import {StabilizerLogic} from "./engine/StabilizerLogic.sol";
 import {Math} from "./utils/Math.sol";
 import {DataTypes} from "./Types/DataTypes.sol";
+import {IStabilizer} from "./interfaces/IStabilizer.sol";
 
-contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
+contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard, IStabilizer {
     using SafeERC20 for IERC20;
     using StabilizerInvariant for uint256;
     using DynamicFeesEngine for uint256;
@@ -65,19 +66,6 @@ contract Stabilizer is ERC20("Stabilizer", "STB"), Ownable, ReentrancyGuard {
         require(msg.sender == owner() || msg.sender == feeReceiver, NotAuthorized());
         _;
     }
-
-    event LiquidityAdded(uint256 amountUsdc, uint256 amountUsdt, uint256 amountStb, address receiver);
-    event LiquidityRemoved(uint256 amountUsdc, uint256 amountUsdt, uint256 amountStb, address receiver);
-    event Exchange(
-        address token, uint256 amount, uint256 quoteAmount, uint256 fees, address receiver, address feeReceiver
-    );
-    event FeeBpsUpdate(uint16 baseFeeBps, uint16 maxBaseFeeBps);
-    event OracleUpdate(address oldOracle, address newOracle);
-    event AmpUpdate(uint256 amp);
-    event FeeReceiverUpdate(address oldFeeReceiver, address newFeeReceiver);
-    event CleanUp(address token, uint256 amount);
-    event MaxImbalanceThresholdUpdate(uint256 oldThreshold, uint256 newThreshold);
-    event MaxPriceDeviationThresholdUpdate(uint256 oldThreshold, uint256 newThreshold);
 
     constructor(address admin, address _usdc, address _usdt, uint256 _amp, address _oracle, address _feeReceiver)
         Ownable(admin)

@@ -4,7 +4,7 @@ pragma solidity ^0.8.33;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockV3Aggregator} from "@chainlink/contracts/src/v0.8/shared/mocks/MockV3Aggregator.sol";
-import {Stabilizer} from "../src/Stabilizer.sol";
+import {Stabilizer, IStabilizer} from "../src/Stabilizer.sol";
 import {StabilizerOracle} from "../src/StabilizerOracle.sol";
 import {StabilizerLogic} from "../src/engine/StabilizerLogic.sol";
 import {StabilizerInvariant} from "../src/engine/Invariant.sol";
@@ -66,7 +66,7 @@ contract StabilizerTest is Test {
         _approveTokens();
 
         vm.expectEmit(true, true, true, true);
-        emit Stabilizer.LiquidityAdded(INITIAL_USDC, INITIAL_USDT, expectedStb, user);
+        emit IStabilizer.LiquidityAdded(INITIAL_USDC, INITIAL_USDT, expectedStb, user);
 
         stabilizer.addLiquidity(INITIAL_USDC, INITIAL_USDT, expectedStb, user);
         vm.stopPrank();
