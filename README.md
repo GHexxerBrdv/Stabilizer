@@ -67,6 +67,9 @@ Stabilizer/
 │   │   ├── DynamicFeesEngine.sol     # Dynamic fee calculations & directional adjustments
 │   │   ├── Invariant.sol             # Curve Stableswap mathematical invariant solver
 │   │   └── StabilizerLogic.sol       # Execution routing library for swaps & liquidity
+│   ├── interfaces/
+│   │   ├── IStabilizerOracle.sol     # Interface for the StabilizerOracle contract
+│   │   └── IStabilizer.sol           # Interface for the Stabilizer contract
 │   └── utils/
 │       └── Math.sol                  # Pure math functions (min, max, absDiff)
 └── test/
@@ -85,6 +88,7 @@ Stabilizer/
 *   **`src/`**: Houses all production smart contracts.
     *   `Types/`: Declares grouped structs (`ExchangeParams`, etc.) to circumvent Solidity stack-too-deep limits during calculations.
     *   `engine/`: Contains low-level math, fee formulas, and execution components. Keeping these separated in libraries reduces core contract size and prevents deployment bloat.
+    *   `interfaces/`: Defines the external interfaces for the Stabilizer and StabilizerOracle contracts.
 *   **`test/`**: Implements complete unit and integration tests. Mirroring the `src/` directory layout makes locating and expanding coverage for individual code modules highly intuitive.
 
 ---
