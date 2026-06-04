@@ -7,7 +7,6 @@ interface IStabilizer {
     event Exchange(
         address token, uint256 amount, uint256 quoteAmount, uint256 fees, address receiver, address feeReceiver
     );
-    event FeeBpsUpdate(uint16 baseFeeBps, uint16 maxBaseFeeBps);
     event OracleUpdate(address oldOracle, address newOracle);
     event AmpUpdate(uint256 amp);
     event FeeReceiverUpdate(address oldFeeReceiver, address newFeeReceiver);
