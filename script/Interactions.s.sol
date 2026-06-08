@@ -5,24 +5,30 @@ import {Script, console2} from "forge-std/Script.sol";
 import {Stabilizer} from "../src/Stabilizer.sol";
 import {USDC} from "./mocks/Usdc.sol";
 import {USDT} from "./mocks/Usdt.sol";
+import {DevOpsTools} from "foundry-devops/src/DevOpsTools.sol";
 
 contract Interactions is Script {
     Stabilizer public stabilizer;
     USDC public usdc;
     USDT public usdt;
 
-    address admin = 0xA7407106D3c9a5ab2131a7AcAa343b6219Aa1Dd6;
+    address admin = vm.envAddress("ADMIN");
     address user = makeAddr("receiver");
 
-    address constant USDC_ADDRESS = 0x6162A003B0DbEccEA328924d0F2382eF07588eE5;
-    address constant USDT_ADDRESS = 0x0e6eDa717c28536746594f4D2D0e699f639bdC06;
-
     function run() public {
-        stabilizer = Stabilizer(0xEb1598206b58D87d671d137228712d8919914D16);
-        usdc = USDC(USDC_ADDRESS);
-        usdt = USDT(USDT_ADDRESS);
+        (address usdcAddress, address usdtAddress, address stabilizerAddress) = fetchDeployedAddress();
+        stabilizer = Stabilizer(stabilizerAddress);
+        usdc = USDC(usdcAddress);
+        usdt = USDT(usdtAddress);
 
         allInter();
+    }
+
+    function fetchDeployedAddress() private view returns (address, address, address) {
+        address usdc = DevOpsTools.get_most_recent_deployment("USDC", block.chainid);
+        address usdt = DevOpsTools.get_most_recent_deployment("USDT", block.chainid);
+        address stabilizer = DevOpsTools.get_most_recent_deployment("Stabilizer", block.chainid);
+        return (usdc, usdt, stabilizer);
     }
 
     function addLiquidity() public {

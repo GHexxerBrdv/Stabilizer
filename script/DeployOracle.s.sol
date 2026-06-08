@@ -4,13 +4,14 @@ pragma solidity ^0.8.33;
 import {Script, console2} from "forge-std/Script.sol";
 import {StabilizerOracle} from "../src/StabilizerOracle.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {DevOpsTools} from "../lib/foundry-devops/src/DevOpsTools.sol";
 
 contract DeployOracle is Script {
     StabilizerOracle public oracle;
 
     function run() public {
-        address usdc = 0x6162A003B0DbEccEA328924d0F2382eF07588eE5;
-        address usdt = 0x0e6eDa717c28536746594f4D2D0e699f639bdC06;
+        address usdc = DevOpsTools.get_most_recent_deployment("USDC", block.chainid); // 0x6162A003B0DbEccEA328924d0F2382eF07588eE5 on polygon amoy
+        address usdt = DevOpsTools.get_most_recent_deployment("USDT", block.chainid); // 0x0e6eDa717c28536746594f4D2D0e699f639bdC06 on polygon amoy
 
         address[] memory tokens = new address[](2);
         tokens[0] = usdc;

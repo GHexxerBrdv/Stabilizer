@@ -8,6 +8,11 @@ remappings = [
     '@chainlink/contracts/=lib/chainlink-evm/contracts/'
 ]
 
+fs_permissions = [
+    { access = "read", path = "./broadcast" },
+    { access = "read", path = "./reports" },
+]
+
 [invariant]
 runs = 128
 depth = 15
