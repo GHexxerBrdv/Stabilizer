@@ -218,6 +218,53 @@ The project achieves:
 
 ---
 
+## Deployment
+
+This repository focuses on deploying smart contracts on polygon amoy testnet, However if  you want to try other blockchains you can modify the deployment script command to deploy to your preferred chain.
+
+### Environment Variables
+
+Create a `.env` file in the root directory and copy the contents from `.env.example`.
+
+```bash
+cp .env.example .env
+```
+
+set up the environment variables in the `.env` file.
+
+### Deploy contracts
+
+The deployment of contracts in this repository is standalon that means you have to deploy each contract individually. if you want to deploy all contracts at once then you can build yourown script by taking reference from the current deployment script.
+
+Run the following order of the scripts to deploy the contracts:
+
+To deploy tokens (you can take already deployed tokens from the explorer, but they must be stablecoins):
+```bash
+forge script script/DeployTokens.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast -vvvv
+```
+
+To deploy oracle contract(the current oracle is only supporting data feed for usdc/usd and usdt/usd on polygon amoy, you always can choose appropriate data feed address in your case):
+```bash
+forge script script/DeployOracle.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast -vvvv
+```
+
+To deploy the stabilizer contract:
+```bash
+forge script script/DeployStabilizer.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast -vvvv
+```
+
+## Deployments
+| contract    | address | chain |
+|-------------|---------|-------|
+| USDC (mock) | `0x6162A003B0DbEccEA328924d0F2382eF07588eE5` | Polygon Amoy |
+| USDT (mock) | `0x0e6eDa717c28536746594f4D2D0e699f639bdC06` | Polygon Amoy |
+| Oracle      | `0x2B156643d89AFecd1E6c1a67df29a0E8b9C638D8` | Polygon Amoy |
+| Stabilizer  | `0xEb1598206b58D87d671d137228712d8919914D16` | Polygon Amoy |
+
+## Gas Report
+
+Access [gasReport.md](documentation/gasReport.md)
+
 ## Challenges and Engineering Decisions
 
 ### 1. Newton-Raphson Approximation in EVM
