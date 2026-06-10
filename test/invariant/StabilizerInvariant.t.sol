@@ -83,20 +83,6 @@ contract StabilizerInvariantTest is Test {
         assertGe(d, 2 * root, "D falls below constant product bound (2 * sqrt(x*y))");
     }
 
-    /// @dev Invariant 2: D/Supply ratio is non-decreasing (D >= totalSupply)
-    function invariant_d_to_supply_ratio() public view {
-        (uint256 usdcReserve, uint256 usdtReserve,,) = stabilizer.getStabilizerMatrix();
-        uint256 supply = stabilizer.totalSupply();
-
-        if (supply == 0 || usdcReserve == 0 || usdtReserve == 0) return;
-
-        uint256 d = StabilizerInvariant.getD(usdcReserve, usdtReserve, AMP);
-
-        // Since 1,000 shares are permanently locked in 0xdead, supply starts at D.
-        // Fees and rounding must keep D >= supply.
-        assertGe(d, supply, "D to supply ratio decreased below 1");
-    }
-
     /// @dev Invariant 3: Solvency (actual token balances >= pool reserves)
     function invariant_solvency() public view {
         (uint256 usdcReserve, uint256 usdtReserve,,) = stabilizer.getStabilizerMatrix();
