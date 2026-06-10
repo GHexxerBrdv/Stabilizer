@@ -19,15 +19,15 @@ contract StabilizerInvariantTest is Test {
     Stabilizer internal stabilizer;
     StabilizerHandler internal handler;
 
-    uint256 internal constant AMP = 100;
-    int256 internal constant PRICE = 1e8; // $1.00 (8 decimals)
+    uint256 internal constant AMP = 2000;
+    int256 internal constant PRICE = 1e8; 
 
     function setUp() public {
-        // Deploy tokens
+        
         usdc = new MockERC20("USD Coin", "USDC", 6);
         usdt = new MockERC20("Tether", "USDT", 6);
 
-        // Deploy feeds
+        
         MockV3Aggregator usdcFeed = new MockV3Aggregator(8, PRICE);
         MockV3Aggregator usdtFeed = new MockV3Aggregator(8, PRICE);
 
@@ -38,26 +38,21 @@ contract StabilizerInvariantTest is Test {
         feeds[0] = address(usdcFeed);
         feeds[1] = address(usdtFeed);
 
-        // Deploy oracle
+        
         oracle = new StabilizerOracle(feeds, tokens);
 
-        // Deploy pool
         stabilizer = new Stabilizer(admin, address(usdc), address(usdt), AMP, address(oracle), feeReceiver);
 
-        // Deploy Handler
         handler = new StabilizerHandler(stabilizer, usdc, usdt);
 
-        // Seed initial liquidity so pool math getD does not revert
-        usdc.mint(address(handler), 10_000e6); // mint tokens to the handler
+        usdc.mint(address(handler), 10_000e6);
         usdt.mint(address(handler), 10_000e6);
         vm.startPrank(address(handler));
-        stabilizer.addLiquidity(10_000e6, 10_000e6, 1, address(handler)); // add liquidity to the pool
+        stabilizer.addLiquidity(10_000e6, 10_000e6, 1, address(handler));
         vm.stopPrank();
 
-        // Register the handler contract as our target for stateful fuzzing
         targetContract(address(handler));
 
-        // Exclude internal/helper contracts to make fuzzing cleaner
         excludeContract(address(stabilizer));
         excludeContract(address(usdc));
         excludeContract(address(usdt));
@@ -66,7 +61,6 @@ contract StabilizerInvariantTest is Test {
         excludeContract(address(usdtFeed));
     }
 
-    /// @dev Invariant 1: Stableswap bounds (2*sqrt(x*y) <= D <= x + y)
     function invariant_stableswap_bounds() public view {
         (uint256 usdcReserve, uint256 usdtReserve,,) = stabilizer.getStabilizerMatrix();
 
@@ -74,16 +68,13 @@ contract StabilizerInvariantTest is Test {
 
         uint256 d = StabilizerInvariant.getD(usdcReserve, usdtReserve, AMP);
 
-        // Constant Sum Bound (D <= x + y)
         assertGe(usdcReserve + usdtReserve, d, "D exceeds constant sum bound (x + y)");
-
-        // Constant Product Bound (D >= 2 * sqrt(x * y))
+        
         uint256 product = usdcReserve * usdtReserve;
         uint256 root = sqrt(product);
         assertGe(d, 2 * root, "D falls below constant product bound (2 * sqrt(x*y))");
     }
 
-    /// @dev Invariant 3: Solvency (actual token balances >= pool reserves)
     function invariant_solvency() public view {
         (uint256 usdcReserve, uint256 usdtReserve,,) = stabilizer.getStabilizerMatrix();
 
@@ -94,7 +85,6 @@ contract StabilizerInvariantTest is Test {
         assertGe(actualUsdt, usdtReserve, "Pool USDT balance insolvent relative to reserves");
     }
 
-    /// @dev Log testing run statistics at the end of fuzzing
     function invariant_call_summary() public view {
         console2.log("--- Fuzz Run Stats ---");
         console2.log("Total Calls:     ", handler.numCalls());
@@ -103,7 +93,6 @@ contract StabilizerInvariantTest is Test {
         console2.log("Swaps:           ", handler.numSwaps());
     }
 
-    // --- Helper math functions ---
     function sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
             z = y;
