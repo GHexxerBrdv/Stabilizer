@@ -4,6 +4,10 @@ A production-grade, highly optimized, non-custodial Stableswap Liquidity Pool an
 
 ---
 
+# StableStream: Rust based indexer for Stabilizer
+
+- [StableStream](https://github.com/GHexxerBrdv/StableStream.git)
+
 ## Overview
 
 ### Problem Statement
